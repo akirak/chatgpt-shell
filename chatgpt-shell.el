@@ -30,8 +30,7 @@
 
 ;;; Code:
 
-(defcustom chatgpt-shell-openai-key nil
-  "OpenAI key." :type  'string)
+(require 'auth-source)
 
 (defcustom chatgpt-shell-prompt "ChatGPT> "
   "Prompt text." :type 'string)
@@ -112,7 +111,7 @@ Uses the interface provided by `comint-mode'"
         (call-interactively 'comint-clear-buffer)
         (comint-output-filter (chatgpt-shell--process) chatgpt-shell--prompt-internal)
         (setq chatgpt-shell--busy nil))
-       ((not chatgpt-shell-openai-key)
+       ((not (chatgpt-shell--auth-source-secret))
         (chatgpt-shell--write-reply "`chatgpt-openai-key' needs to be set to your key")
         (setq chatgpt-shell--busy nil))
        ((string-empty-p (string-trim input-string))
@@ -188,14 +187,18 @@ Calls CALLBACK and ERROR-CALLBACK with its output when finished."
     (comint-skip-prompt)
     (buffer-substring (point) (progn (forward-sexp 1) (point)))))
 
+(defun chatgpt-shell--auth-source-secret ()
+  (plist-get (car (auth-source-search :host "api.openai.com" :max 1))
+             :secret))
+
 (defun chatgpt-shell--make-request-command-list (messages)
   "Build ChatGPT curl command list using MESSAGES."
-  (cl-assert chatgpt-shell-openai-key nil "`chatgpt-shell-openai-key' needs to be set with your key")
   (list "curl"
         "https://api.openai.com/v1/chat/completions"
         "--fail" "--no-progress-meter" "-m" "30"
         "-H" "Content-Type: application/json"
-        "-H" (format "Authorization: Bearer %s" chatgpt-shell-openai-key)
+        "-H" (format "Authorization: Bearer %s"
+                     (funcall (chatgpt-shell--auth-source-secret)))
         "-d" (json-serialize `((model . "gpt-3.5-turbo")
                                (messages . ,messages)
                                (temperature . 0.7)))))
